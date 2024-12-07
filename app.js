@@ -13,7 +13,7 @@ const app = express();
 
 // Enable CORS for all routes
 app.use(cors({
-  origin: "http://localhost:3000", // Allow requests from the frontend (React app)
+  origin: ["http://localhost:3000", "https://www.taran.co.in"], // Allow requests from the frontend (React app)
   methods: ["GET", "POST", "PUT", "DELETE"], // Allowed HTTP methods
   credentials: true // Allow cookies or authentication headers
 }));
