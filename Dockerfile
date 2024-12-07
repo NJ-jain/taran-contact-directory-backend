@@ -5,5 +5,5 @@ RUN npm install i npm@latest -g
 RUN npm install dotenv-cli -g
 COPY package.json package-log*.json ,/
 RUN npm install 
-COPY ..
+COPY . /app
 CMD ["npm", "run" , "start"]
