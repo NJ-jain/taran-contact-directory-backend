@@ -1,6 +1,7 @@
 const User = require('../models/userModel.js');
 const multer = require('multer');
 const { uploadToImageKit } = require('../utils/imageKit');
+const Admin = require('../models/adminModel.js');
 
 // Configure multer to store files in memory
 const upload = multer({ storage: multer.memoryStorage() });
@@ -64,3 +65,29 @@ exports.updateUser = [
     }
   }
 ];
+
+
+exports.adminApproval = async (req, res) => {
+  try {
+    // Assuming req.adminId contains the ID of the admin to update
+    const adminId = req.adminId;
+    const userId = req.userId;
+
+    // Find the admin by ID and update it by pushing the userId into the userArray
+    const admin = await Admin.findByIdAndUpdate(
+      adminId,
+      { $push: { userArray: userId } },
+      { new: true, useFindAndModify: false }
+    );
+
+    if (!admin) {
+      return res.status(404).json({ message: 'Admin not found' });
+    }
+
+    res.status(200).json(admin);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+

@@ -12,4 +12,6 @@ router.get('/users', userController.getUser);
 // Route to update a user
 router.put('/users', userController.updateUser);
 
+router.post("/admin-approval-request", userController.adminApproval)
+
 module.exports = router;

@@ -85,8 +85,9 @@ createMember: [
   // Get all members for a user
   getAllMembers: async (req, res) => {
     try {
-      const members =   await Member.find(); // Filter by userId
-      res.status(200).json( [...members] );
+      // Only fetch members that have been approved
+      const members = await Member.find({ isApproved: true });
+      res.status(200).json(members);
     } catch (error) {
       res.status(500).json({ message: 'Error fetching members', error: error.message });
     }
