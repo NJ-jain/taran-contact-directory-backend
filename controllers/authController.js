@@ -3,12 +3,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv');
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRATION = '24h';
 
 
 const authController = {
-  // Register a new user
+  // Register a new user  
   register: async (req, res) => {
     try {
       const { email, password, category, aboutUs } = req.body;

@@ -69,25 +69,20 @@ exports.updateUser = [
 
 exports.adminApproval = async (req, res) => {
   try {
-    // Assuming req.adminId contains the ID of the admin to update
-    const adminId = req.adminId;
     const userId = req.userId;
 
-    // Find the admin by ID and update it by pushing the userId into the userArray
-    const admin = await Admin.findByIdAndUpdate(
-      adminId,
-      { $push: { userArray: userId } },
-      { new: true, useFindAndModify: false }
+    // Use findOneAndUpdate with $addToSet to ensure no duplicates
+    const globalUserArray = await Admin.GlobalUserArray.findOneAndUpdate(
+      {}, // An empty filter selects the first document found
+      { $addToSet: { userArray: userId } }, // Adds userId to the array only if it doesn't already exist
+      { upsert: true, new: true, useFindAndModify: false } // Options to create if not exists, return new doc, and use native findOneAndUpdate
     );
 
-    if (!admin) {
-      return res.status(404).json({ message: 'Admin not found' });
-    }
-
-    res.status(200).json(admin);
+    res.status(200).json(globalUserArray);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
 
 

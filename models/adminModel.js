@@ -1,17 +1,28 @@
 const mongoose = require('mongoose');
 
-const adminSchema = new mongoose.Schema({
-  // Define the Admin schema fields here
-  // For example:
-  username: { type: String, required: true },
-  password: { type: String, required: true },
+// Define a new schema for the global user array
+const globalUserArraySchema = new mongoose.Schema({
   userArray: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User', // Reference to User schema
   }],
-  // ... any other fields ...
+});
+
+// Create a model for the global user array
+const GlobalUserArray = mongoose.model('GlobalUserArray', globalUserArraySchema);
+
+const adminSchema = new mongoose.Schema({
+  password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  // userArray: [{
+  //   type: mongoose.Schema.Types.ObjectId,
+  //   ref: 'User', // Reference to User schema
+  // }],
 });
 
 const Admin = mongoose.model('Admin', adminSchema);
 
-module.exports = Admin;
+module.exports = {
+  Admin,
+  GlobalUserArray, // Export the new GlobalUserArray model
+};
