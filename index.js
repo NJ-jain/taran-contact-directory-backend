@@ -18,15 +18,15 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 200   // ✅ return 200 instead of 204
 }));
 
-// Handle preflight requests
-app.options('*', cors());
+// Explicitly handle preflight requests
+app.options('*', (req, res) => {
+  res.sendStatus(200);   // ✅ Always respond with 200 OK
+});
 
 app.use(express.json());
-
-
 
 // Health check endpoint
 app.get('/', (req, res) => {
