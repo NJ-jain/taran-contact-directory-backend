@@ -21,12 +21,18 @@ app.use(cors({
   optionsSuccessStatus: 200   // ✅ return 200 instead of 204
 }));
 
-// Explicitly handle preflight requests
-app.options('*', (req, res) => {
-  res.sendStatus(200);   // ✅ Always respond with 200 OK
-});
-
 app.use(express.json());
+
+// ✅ Explicitly handle OPTIONS requests before routes
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    res.header("Access-Control-Allow-Origin", "https://www.taran.co.in");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Adminauthorization");
+    return res.sendStatus(200);  // ✅ Always respond 200 OK
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/', (req, res) => {
