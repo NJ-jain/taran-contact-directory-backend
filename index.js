@@ -12,119 +12,21 @@ connectDB();
 
 const app = express();
 
-// Enable CORS for all routes with more permissive settings for mobile
+// Enable CORS for all routes
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or Postman)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      "http://localhost:3000", 
-      "https://www.taran.co.in",
-      "https://taran.co.in",
-      "http://192.168.1.14:3000", // Local network IP for mobile testing
-      "http://192.168.1.14", // Local network IP without port
-      "https://taran-contact-directory.vercel.app", // Frontend Vercel URL if applicable
-      "https://taran-contact-directory-git-main.vercel.app" // Vercel preview URLs
-    ];
-    
-    const isAllowed = (
-      allowedOrigins.indexOf(origin) !== -1 ||
-      origin.startsWith('http://192.168.') ||
-      origin.endsWith('.taran.co.in') ||
-      origin === 'https://taran.co.in' ||
-      origin === 'https://www.taran.co.in'
-    );
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Added OPTIONS for preflight
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
-  credentials: true, // Allow cookies or authentication headers
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
-
-// Explicitly handle preflight for all routes
-app.options('*', cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      "http://localhost:3000", 
-      "https://www.taran.co.in",
-      "https://taran.co.in",
-      "http://192.168.1.14:3000",
-      "http://192.168.1.14",
-      "https://taran-contact-directory.vercel.app",
-      "https://taran-contact-directory-git-main.vercel.app"
-    ];
-    
-    const isAllowed = (
-      allowedOrigins.indexOf(origin) !== -1 ||
-      origin.startsWith('http://192.168.') ||
-      origin.endsWith('.taran.co.in') ||
-      origin === 'https://taran.co.in' ||
-      origin === 'https://www.taran.co.in'
-    );
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('CORS preflight blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: "https://www.taran.co.in",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
   credentials: true,
   optionsSuccessStatus: 204
 }));
 
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 
-// Additional CORS headers middleware
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    "http://localhost:3000", 
-    "https://www.taran.co.in",
-    "https://taran.co.in",
-    "http://192.168.1.14:3000",
-    "http://192.168.1.14",
-    "https://taran-contact-directory.vercel.app",
-    "https://taran-contact-directory-git-main.vercel.app"
-  ];
-  
-  const isAllowed = (
-    !origin ||
-    allowedOrigins.indexOf(origin) !== -1 ||
-    origin.startsWith('http://192.168.') ||
-    origin.endsWith('.taran.co.in') ||
-    origin === 'https://taran.co.in' ||
-    origin === 'https://www.taran.co.in'
-  );
 
-  if (isAllowed) {
-    res.header('Access-Control-Allow-Origin', origin || 'https://www.taran.co.in');
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
-  
-  next();
-});
 
 // Health check endpoint
 app.get('/', (req, res) => {
