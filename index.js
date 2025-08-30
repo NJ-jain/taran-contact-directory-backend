@@ -39,10 +39,11 @@ const corsOptions = {
 // Enable CORS
 app.use(cors(corsOptions));
 
-// Additional CORS headers for Vercel compatibility
+// Additional CORS headers for Render/Vercel compatibility
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
+  // Set CORS headers
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
   }
