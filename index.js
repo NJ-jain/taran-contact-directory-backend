@@ -14,25 +14,35 @@ const app = express();
 
 // Enable CORS for all routes
 app.use(cors({
-  origin: "https://www.taran.co.in",
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow localhost for development
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    
+    // Allow production domain
+    if (origin === 'https://www.taran.co.in') {
+      return callback(null, true);
+    }
+    
+    // Allow all origins in development mode
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
   credentials: true,
-  optionsSuccessStatus: 200   // ✅ return 200 instead of 204
+  optionsSuccessStatus: 200,
+  preflightContinue: false
 }));
 
 app.use(express.json());
-
-// ✅ Explicitly handle OPTIONS requests before routes
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    res.header("Access-Control-Allow-Origin", "https://www.taran.co.in");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Adminauthorization");
-    return res.sendStatus(200);  // ✅ Always respond 200 OK
-  }
-  next();
-});
 
 // Health check endpoint
 app.get('/', (req, res) => {
