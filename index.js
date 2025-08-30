@@ -1,7 +1,6 @@
 const express = require("express");
 const connectDB = require("./config/db");
 const dotenv = require("dotenv");
-const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -11,14 +10,6 @@ dotenv.config();
 connectDB();
 
 const app = express();
-
-// Allow all origins - No CORS security
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Adminauthorization'],
-  credentials: false
-}));
 
 // Parse JSON bodies
 app.use(express.json());
