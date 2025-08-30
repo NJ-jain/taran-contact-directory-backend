@@ -28,6 +28,11 @@ app.use(cors({
       return callback(null, true);
     }
     
+    // Allow Vercel preview deployments
+    if (origin && origin.includes('vercel.app')) {
+      return callback(null, true);
+    }
+    
     // Allow all origins in development mode
     if (process.env.NODE_ENV === 'development') {
       return callback(null, true);
@@ -43,6 +48,35 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Additional CORS handling for Vercel
+app.use((req, res, next) => {
+  // Handle preflight requests more explicitly
+  if (req.method === 'OPTIONS') {
+    const origin = req.headers.origin;
+    
+    // Set CORS headers for preflight
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', origin);
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Max-Age', '86400'); // 24 hours
+    
+    // Respond to preflight request
+    return res.status(200).end();
+  }
+  
+  // Set CORS headers for actual requests
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  next();
+});
 
 // Health check endpoint
 app.get('/', (req, res) => {
