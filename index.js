@@ -12,54 +12,13 @@ connectDB();
 
 const app = express();
 
-// CORS configuration with environment-based origins
-const allowedOrigins = process.env.NODE_ENV === 'production' 
-  ? ['https://www.taran.co.in', 'https://taran.co.in']
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'https://www.taran.co.in', 'https://taran.co.in'];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+// Allow all origins - No CORS security
+app.use(cors({
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Adminauthorization'],
-  credentials: true,
-  optionsSuccessStatus: 200,
-  preflightContinue: false
-};
-
-// Enable CORS
-app.use(cors(corsOptions));
-
-// Additional CORS headers for Render/Vercel compatibility
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  // Set CORS headers
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight requests explicitly
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-  
-  next();
-});
+  credentials: false
+}));
 
 // Parse JSON bodies
 app.use(express.json());
