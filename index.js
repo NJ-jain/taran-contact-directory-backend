@@ -12,70 +12,55 @@ connectDB();
 
 const app = express();
 
-// Enable CORS for all routes
+// Enable CORS for all routes - Simplified for Vercel
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Allow localhost for development
-    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-      return callback(null, true);
-    }
-    
-    // Allow production domain
-    if (origin === 'https://www.taran.co.in') {
-      return callback(null, true);
-    }
-    
-    // Allow Vercel preview deployments
-    if (origin && origin.includes('vercel.app')) {
-      return callback(null, true);
-    }
-    
-    // Allow all origins in development mode
-    if (process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: true, // Allow all origins for now to debug
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
   credentials: true,
-  optionsSuccessStatus: 200,
-  preflightContinue: false
+  optionsSuccessStatus: 200
 }));
 
 app.use(express.json());
 
-// Additional CORS handling for Vercel
+// Additional CORS handling for Vercel - More explicit
 app.use((req, res, next) => {
-  // Handle preflight requests more explicitly
-  if (req.method === 'OPTIONS') {
-    const origin = req.headers.origin;
-    
-    // Set CORS headers for preflight
-    if (origin) {
-      res.header('Access-Control-Allow-Origin', origin);
-    }
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Max-Age', '86400'); // 24 hours
-    
-    // Respond to preflight request
-    return res.status(200).end();
-  }
-  
-  // Set CORS headers for actual requests
+  // Always set CORS headers
   const origin = req.headers.origin;
   if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
   }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
   res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS preflight request from:', origin);
+    return res.status(200).json({
+      message: 'Preflight request successful',
+      origin: origin,
+      method: req.method
+    });
+  }
   
   next();
+});
+
+// Explicit OPTIONS handler for all routes
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  
+  console.log('Explicit OPTIONS handler for:', req.originalUrl, 'from:', origin);
+  res.status(200).end();
 });
 
 // Health check endpoint
