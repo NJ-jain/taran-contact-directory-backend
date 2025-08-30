@@ -1,6 +1,7 @@
 const express = require("express");
 const connectDB = require("./config/db");
 const dotenv = require("dotenv");
+const cors = require("cors");
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -10,6 +11,29 @@ dotenv.config();
 connectDB();
 
 const app = express();
+
+// CORS configuration
+app.use(cors({
+  origin: [
+    'https://www.taran.co.in',
+    'https://taran.co.in',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8080'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
+}));
+
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'No origin'}`);
+  next();
+});
+
+// Handle preflight requests
+app.options('*', cors());
 
 // Parse JSON bodies
 app.use(express.json());
@@ -37,6 +61,18 @@ app.get('/api', (req, res) => {
       members: '/api/members',
       admin: '/api/admin'
     }
+  });
+});
+
+// Test endpoint for debugging
+app.get('/api/test', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Test endpoint working',
+    timestamp: new Date().toISOString(),
+    headers: req.headers,
+    method: req.method,
+    url: req.url
   });
 });
 

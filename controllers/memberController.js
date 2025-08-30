@@ -2,6 +2,7 @@ const Member = require('../models/memberModel');
 const User = require('../models/userModel');
 const { uploadToImageKit, deleteFromImageKit } = require('../utils/imageKit');
 const multer = require('multer');
+const mongoose = require('mongoose'); // Added for mongoose connection check
 
 // Configure multer to store files in memory
 const upload = multer({ storage: multer.memoryStorage() });
@@ -85,11 +86,33 @@ createMember: [
   // Get all members for a user
   getAllMembers: async (req, res) => {
     try {
+      console.log('getAllMembers called - checking database connection...');
+      
+      // Check if we can connect to the database
+      if (mongoose.connection.readyState !== 1) {
+        console.error('Database not connected. Ready state:', mongoose.connection.readyState);
+        return res.status(500).json({ 
+          message: 'Database connection error', 
+          error: 'Database not connected',
+          readyState: mongoose.connection.readyState
+        });
+      }
+      
+      console.log('Database connected, querying members...');
+      
       // Only fetch members that have been approved
-      const members =   await Member.find({ isApproved: true });
+      const members = await Member.find({ isApproved: true });
+      
+      console.log(`Found ${members.length} approved members`);
+      
       res.status(200).json(members);
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching members', error: error.message });
+      console.error('Error in getAllMembers:', error);
+      res.status(500).json({ 
+        message: 'Error fetching members', 
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   },
 

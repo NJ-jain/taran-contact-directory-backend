@@ -2,13 +2,26 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
-    // Remove useNewUrlParser and useUnifiedTopology options
+    console.log('Attempting to connect to MongoDB...');
+    console.log('MONGO_URI exists:', !!process.env.MONGO_URI);
     
-    console.log(`MongoDB connected: ${conn.connection.host}`);
+    const conn = await mongoose.connect(process.env.MONGO_URI);
+    
+    console.log(`MongoDB connected successfully: ${conn.connection.host}`);
+    console.log(`Database name: ${conn.connection.name}`);
+    
+    // Test the connection
+    const collections = await conn.connection.db.listCollections().toArray();
+    console.log('Available collections:', collections.map(c => c.name));
+    
   } catch (error) {
-    console.error(`Error: ${error.message}`);
-    process.exit(1);
+    console.error('MongoDB connection error:', error.message);
+    console.error('Full error:', error);
+    
+    // Don't exit immediately on Vercel, let the app continue
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
 
