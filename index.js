@@ -12,9 +12,23 @@ connectDB();
 
 const app = express();
 
-// CORS configuration for production
+// CORS configuration with environment-based origins
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+  ? ['https://www.taran.co.in', 'https://taran.co.in']
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'https://www.taran.co.in', 'https://taran.co.in'];
+
 const corsOptions = {
-  origin: ['https://www.taran.co.in', 'https://taran.co.in'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Adminauthorization'],
   credentials: true,
@@ -27,36 +41,6 @@ app.use(cors(corsOptions));
 
 // Parse JSON bodies
 app.use(express.json());
-
-// Additional CORS handling for preflight requests
-app.use((req, res, next) => {
-  // Set CORS headers for all responses
-  res.header('Access-Control-Allow-Origin', 'https://www.taran.co.in');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Max-Age', '86400'); // 24 hours
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request for:', req.originalUrl);
-    return res.status(200).end();
-  }
-  
-  next();
-});
-
-// Explicit OPTIONS handler for all routes
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://www.taran.co.in');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Max-Age', '86400');
-  
-  console.log('Explicit OPTIONS handler for:', req.originalUrl);
-  res.status(200).end();
-});
 
 // Health check endpoint
 app.get('/', (req, res) => {
