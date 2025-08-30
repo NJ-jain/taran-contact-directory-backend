@@ -8,7 +8,6 @@ const userRoutes = require('./routes/userRoutes');
 const adminRoutes = require('./routes/adminRoute.js');
 
 dotenv.config();
-connectDB();
 
 const app = express();
 
@@ -68,6 +67,21 @@ app.get('/api', (req, res) => {
   });
 });
 
+// Database connection middleware
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database connection failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Database unavailable'
+    });
+  }
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/members", memberRoutes);
@@ -95,10 +109,15 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Health check available at: http://localhost:${PORT}/`);
-  console.log(`API health check available at: http://localhost:${PORT}/api`);
-  console.log(`Network access available at: http://192.168.1.14:${PORT}/`);
-  console.log(`Network API available at: http://192.168.1.14:${PORT}/api`);
-});
+// Only start server if not in Vercel environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/`);
+    console.log(`API health check available at: http://localhost:${PORT}/api`);
+    console.log(`Network access available at: http://192.168.1.14:${PORT}/`);
+    console.log(`Network API available at: http://192.168.1.14:${PORT}/api`);
+  });
+}
+
+module.exports = app;
