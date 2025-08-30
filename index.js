@@ -12,24 +12,26 @@ connectDB();
 
 const app = express();
 
-// Enable CORS for all routes - Simplified for Vercel
-app.use(cors({
-  origin: true, // Allow all origins for now to debug
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Adminauthorization"],
+// CORS configuration for production
+const corsOptions = {
+  origin: ['https://www.taran.co.in', 'https://taran.co.in'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Adminauthorization'],
   credentials: true,
-  optionsSuccessStatus: 200
-}));
+  optionsSuccessStatus: 200,
+  preflightContinue: false
+};
 
+// Enable CORS
+app.use(cors(corsOptions));
+
+// Parse JSON bodies
 app.use(express.json());
 
-// Additional CORS handling for Vercel - More explicit
+// Additional CORS handling for preflight requests
 app.use((req, res, next) => {
-  // Always set CORS headers
-  const origin = req.headers.origin;
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
+  // Set CORS headers for all responses
+  res.header('Access-Control-Allow-Origin', 'https://www.taran.co.in');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -37,12 +39,8 @@ app.use((req, res, next) => {
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request from:', origin);
-    return res.status(200).json({
-      message: 'Preflight request successful',
-      origin: origin,
-      method: req.method
-    });
+    console.log('Handling OPTIONS preflight request for:', req.originalUrl);
+    return res.status(200).end();
   }
   
   next();
@@ -50,16 +48,13 @@ app.use((req, res, next) => {
 
 // Explicit OPTIONS handler for all routes
 app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
+  res.header('Access-Control-Allow-Origin', 'https://www.taran.co.in');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Adminauthorization');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Max-Age', '86400');
   
-  console.log('Explicit OPTIONS handler for:', req.originalUrl, 'from:', origin);
+  console.log('Explicit OPTIONS handler for:', req.originalUrl);
   res.status(200).end();
 });
 
