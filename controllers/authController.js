@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendOTPEmail, sendWelcomeEmail } = require('../config/emailConfig');
+const { sendSmsOtp } = require('../utils/smsService');
 
 const JWT_EXPIRATION = '24h';
 
@@ -304,7 +305,13 @@ const authController = {
       console.log(`Member: ${member.firstName} ${member.lastName}`);
       console.log(`Phone:  ${last10}`);
       console.log(`OTP:    ${otp}`);
-      console.log(`======================================================\n`);
+      // Send real SMS to mobile phone (Fast2SMS, 2Factor, Twilio)
+      let smsResult = { success: false, provider: 'none' };
+      try {
+        smsResult = await sendSmsOtp(last10, otp, member.firstName);
+      } catch (smsError) {
+        console.error('[PHONE OTP] SMS dispatch error:', smsError.message);
+      }
 
       // If email exists, send backup email with OTP
       const targetEmail = member.email || member.userId?.email;
@@ -320,11 +327,12 @@ const authController = {
         success: true,
         message: `OTP sent successfully to registered number ending in ...${last10.slice(-4)}`,
         phoneNumber: last10,
-        memberName: `${member.firstName} ${member.lastName}`.trim()
+        memberName: `${member.firstName} ${member.lastName}`.trim(),
+        smsDelivered: smsResult.success
       };
 
-      // In non-production, return devOtp for seamless testing and local demo
-      if (process.env.NODE_ENV !== 'production') {
+      // Return devOtp in development or if explicitly allowed for testing in production
+      if (process.env.NODE_ENV !== 'production' || process.env.SHOW_DEV_OTP_IN_PROD === 'true') {
         responsePayload.devOtp = otp;
       }
 
