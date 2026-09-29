@@ -3,6 +3,7 @@ const connectDB = require("./config/db");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -12,6 +13,11 @@ dotenv.config();
 connectDB();
 
 const app = express();
+
+// Security HTTP headers (configured to allow cross-origin image & asset loading)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // Dynamically compile allowed origins
 const defaultOrigins = [
