@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendOTPEmail, sendWelcomeEmail } = require('../config/emailConfig');
 const { sendSmsOtp } = require('../utils/smsService');
+const { sendWhatsAppOTP } = require('../utils/whatsappService');
 
 const JWT_EXPIRATION = '24h';
 
@@ -299,21 +300,28 @@ const authController = {
       });
       await phoneOtpRecord.save();
 
-      // Log OTP to server console for testing/development
-      console.log(`\n======================================================`);
-      console.log(`[COMMUNITY PHONE OTP GENERATED]`);
-      console.log(`Member: ${member.firstName} ${member.lastName}`);
-      console.log(`Phone:  ${last10}`);
-      console.log(`OTP:    ${otp}`);
-      // Send real SMS to mobile phone (Fast2SMS, 2Factor, Twilio)
-      let smsResult = { success: false, provider: 'none' };
-      try {
-        smsResult = await sendSmsOtp(last10, otp, member.firstName);
-      } catch (smsError) {
-        console.error('[PHONE OTP] SMS dispatch error:', smsError.message);
+      // Security: Only log plain-text OTP in development mode. Never log OTP in production!
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`\n======================================================`);
+        console.log(`[COMMUNITY PHONE OTP GENERATED - DEV MODE]`);
+        console.log(`Member: ${member.firstName} ${member.lastName}`);
+        console.log(`Phone:  ${last10}`);
+        console.log(`OTP:    ${otp}`);
+        console.log(`======================================================\n`);
+      } else {
+        const masked = last10.slice(0, 2) + '******' + last10.slice(-2);
+        console.log(`[PHONE OTP] Verification code generated for member ${member.firstName} ${member.lastName} (${masked})`);
       }
 
-      // If email exists, send backup email with OTP
+      // PRIMARY CHANNEL: Send OTP via Official Meta WhatsApp Cloud API
+      let whatsappResult = { success: false, provider: 'none' };
+      try {
+        whatsappResult = await sendWhatsAppOTP(last10, otp);
+      } catch (waError) {
+        console.error('[PHONE OTP] WhatsApp dispatch error:', waError.message);
+      }
+
+      // If email exists, send backup email notification
       const targetEmail = member.email || member.userId?.email;
       if (targetEmail) {
         try {
@@ -323,12 +331,22 @@ const authController = {
         }
       }
 
+      // Production error handling: Do NOT report success if WhatsApp delivery failed
+      if (process.env.NODE_ENV === 'production' && !whatsappResult.success && process.env.SHOW_DEV_OTP_IN_PROD !== 'true') {
+        // Roll back the saved OTP so no ghost OTP document remains in the database
+        await PhoneOtp.deleteOne({ _id: phoneOtpRecord._id });
+        return res.status(502).json({
+          success: false,
+          message: 'Unable to deliver verification code to WhatsApp. Please ensure your registered number is active on WhatsApp, or contact administrator.'
+        });
+      }
+
       const responsePayload = {
         success: true,
-        message: `OTP sent successfully to registered number ending in ...${last10.slice(-4)}`,
+        message: `Verification code sent to your WhatsApp number ending in ...${last10.slice(-4)}`,
         phoneNumber: last10,
         memberName: `${member.firstName} ${member.lastName}`.trim(),
-        smsDelivered: smsResult.success
+        channel: whatsappResult.success ? 'whatsapp' : 'dev'
       };
 
       // Return devOtp in development or if explicitly allowed for testing in production
