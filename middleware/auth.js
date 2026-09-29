@@ -22,6 +22,9 @@ const auth = async (req, res, next) => {
     }
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = verified.userId;
+    req.memberId = verified.memberId;
+    req.userRole = verified.role;
+    req.phoneNumber = verified.phoneNumber;
     next();
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Token verification failed or expired, authorization denied' });

@@ -17,4 +17,8 @@ router.post('/verify-otp', authController.verifyOTP);
 // Send OTP route (for other purposes)
 router.post('/send-otp', authController.sendOTP);
 
+// Phone OTP verification routes for community members
+router.post('/phone/send-otp', authController.sendPhoneOTP);
+router.post('/phone/verify-otp', authController.verifyPhoneOTP);
+
 module.exports = router;

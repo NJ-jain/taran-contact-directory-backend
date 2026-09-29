@@ -18,9 +18,24 @@ async function handleBannerUpload(file, userId) {
 // Get authenticated user details
 exports.getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.userId)
-      .select('-password -otp -otpExpires -resetPasswordToken -resetPasswordExpires')
-      .populate({ path: 'membersArray', model: 'Member' });
+    let user = null;
+    if (req.userId) {
+      user = await User.findById(req.userId)
+        .select('-password -otp -otpExpires -resetPasswordToken -resetPasswordExpires')
+        .populate({ path: 'membersArray', model: 'Member' });
+    }
+
+    if (!user && req.memberId) {
+      const Member = require('../models/memberModel');
+      const member = await Member.findById(req.memberId);
+      if (member) {
+        user = {
+          _id: member._id,
+          email: member.email || `${req.phoneNumber || 'member'}@taran.community`,
+          membersArray: [member]
+        };
+      }
+    }
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
