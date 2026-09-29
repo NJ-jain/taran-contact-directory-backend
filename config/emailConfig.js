@@ -103,20 +103,22 @@ const sendOTPEmail = async (email, otp, isPasswordReset = false) => {
   return await sendEmail(email, subject, html);
 };
 
-// Send welcome email with password
-const sendWelcomeEmail = async (email, password) => {
+// Send welcome email (without plain-text password for security)
+const sendWelcomeEmail = async (email) => {
+  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
   const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">Welcome to Contact Directory!</h2>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #2563eb;">Welcome to Contact Directory!</h2>
       <p>Hello,</p>
-      <p>Your account has been created successfully.</p>
-      <p>Here are your login credentials:</p>
-      <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 15px; margin: 20px 0;">
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Password:</strong> ${password}</p>
+      <p>Your account has been created successfully with <strong>${email}</strong>.</p>
+      <p>You can now log in to manage your profile and view directory members:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${loginUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+          Log In to Your Account
+        </a>
       </div>
-      <p>Please change your password after your first login for security.</p>
-      <p>Best regards,<br>Your Contact Directory Team</p>
+      <p>If you did not create this account, please contact our support team immediately.</p>
+      <p>Best regards,<br>The Contact Directory Team</p>
     </div>
   `;
 

@@ -1,9 +1,16 @@
-FROM node:alpine
-EXPOSE 7072 
+FROM node:18-alpine
+
 WORKDIR /app
-RUN npm install i npm@latest -g
-RUN npm install dotenv-cli -g
+
 COPY package.json package-lock*.json ./
-RUN npm install 
-COPY . /app
-CMD ["npm", "run" , "start"]
+
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 5000
+
+ENV PORT=5000
+ENV NODE_ENV=production
+
+CMD ["npm", "start"]

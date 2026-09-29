@@ -2,140 +2,154 @@ const Member = require('../models/memberModel');
 const User = require('../models/userModel');
 const { uploadToImageKit, deleteFromImageKit } = require('../utils/imageKit');
 const multer = require('multer');
-const mongoose = require('mongoose'); // Added for mongoose connection check
+const mongoose = require('mongoose');
 
-// Configure multer to store files in memory
-const upload = multer({ storage: multer.memoryStorage() });
+// Configure multer to store files in memory with size limit (5MB)
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+// Helper to escape regex special characters to prevent ReDoS
+function escapeRegex(text) {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
 
 const memberController = {
   // Create a new member
-// ... existing code ...
-createMember: [
-  upload.fields([
-    { name: 'dp', maxCount: 1 }, // File field
-    { name: 'firstName' }, // Text fields
-    { name: 'lastName' },
-    { name: 'email' },
-    { name: 'phoneNumber' },
-    { name: 'address' },
-    { name: 'familyHead' },
-    {name : 'dob'}
-  ]),
-  async (req, res) => {
-    try {
-      const {
-        firstName,
-        lastName,
-        email,
-        phoneNumber,
-        address,
-        familyHead,
-        dob
-      } = req.body;
+  createMember: [
+    upload.single('dp'),
+    async (req, res) => {
+      let savedMember = null;
+      try {
+        const {
+          firstName,
+          lastName,
+          email,
+          phoneNumber,
+          address,
+          familyHead,
+          dob
+        } = req.body;
 
-      // Check if member with this email already exists
-      if (await Member.exists({ email })) {
-        return res.status(400).json({ message: 'Member with this email already exists' });
-      }
-
-      // Create and save new member
-      const newMember = new Member({
-        firstName,
-        lastName,
-        email,
-        phoneNumber,
-        dob,
-        address,
-        userId: req.userId, // From auth middleware
-        familyHead: familyHead === 'true' // Convert string to boolean
-      });
-      const savedMember = await newMember.save();
-
-      // Upload dp to ImageKit if provided
-      if (req.files.dp) {
-        try {
-          const dpUrl = await uploadToImageKit(req.files.dp[0], savedMember.id.toString(), "members");
-          savedMember.dp = dpUrl;
-          await savedMember.save();
-        } catch (error) {
-          return res.status(500).json({ message: 'Error uploading image', error: error.message });
+        if (!firstName || !lastName) {
+          return res.status(400).json({ success: false, message: 'First name and last name are required' });
         }
+
+        const isFamilyHead = familyHead === 'true' || familyHead === true;
+        const normalizedEmail = email && email.trim() !== '' ? email.trim().toLowerCase() : undefined;
+
+        // Check if member with this email already exists (only if an email was provided)
+        if (normalizedEmail) {
+          const emailExists = await Member.exists({ email: normalizedEmail });
+          if (emailExists) {
+            return res.status(400).json({ success: false, message: 'A member with this email already exists' });
+          }
+        }
+
+        // Create and save new member
+        const newMember = new Member({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: normalizedEmail,
+          phoneNumber: phoneNumber ? phoneNumber.trim() : undefined,
+          dob: dob || undefined,
+          address: address ? address.trim() : undefined,
+          userId: req.userId,
+          familyHead: isFamilyHead,
+          isApproved: false // Newly created members need admin approval
+        });
+
+        savedMember = await newMember.save();
+
+        // Handle profile picture upload if file exists (checks both single and fields)
+        const dpFile = req.file || (req.files && req.files.dp ? req.files.dp[0] : null);
+        if (dpFile) {
+          try {
+            const dpUrl = await uploadToImageKit(dpFile, savedMember._id.toString(), "members");
+            savedMember.dp = dpUrl;
+            await savedMember.save();
+          } catch (uploadError) {
+            console.error('ImageKit upload warning during member creation:', uploadError.message);
+            // Member is still created even if ImageKit image upload fails
+          }
+        }
+
+        // Update user's membersArray and optionally familyHeadId
+        const updateData = { $addToSet: { membersArray: savedMember._id } };
+        if (isFamilyHead) {
+          updateData.familyHeadId = savedMember._id;
+        }
+        await User.findByIdAndUpdate(req.userId, updateData);
+
+        // Fetch the updated user data with populated members
+        const updatedUser = await User.findById(req.userId)
+          .select('-password')
+          .populate({ path: 'membersArray', model: 'Member' });
+
+        res.status(201).json(updatedUser);
+
+      } catch (error) {
+        console.error('Error creating member:', error);
+        res.status(500).json({ success: false, message: 'Error creating member', error: error.message });
       }
-
-      // Update user's membersArray and familyHeadId in a single operation
-      const updateData = { $push: { membersArray: savedMember._id } };
-      if (familyHead === 'true') {
-        updateData.familyHeadId = savedMember._id;
-      }
-      await User.findByIdAndUpdate(req.userId, updateData);
-
-      // Fetch the updated user data
-      const user = await User.findById(req.userId)
-        .select('-password') // Exclude password from the result
-        .populate({ path: 'membersArray', model: 'Member', strictPopulate: false });
-
-      res.status(201).json(user);
-
-    } catch (error) {
-      res.status(500).json({ message: 'Error creating member', error: error.message });
     }
-  }
-],
-// ... existing code ...
+  ],
 
-  // Get all members for a user
+  // Get all approved members
   getAllMembers: async (req, res) => {
     try {
-      console.log('getAllMembers called - checking database connection...');
-      
-      // Check if we can connect to the database
       if (mongoose.connection.readyState !== 1) {
-        console.error('Database not connected. Ready state:', mongoose.connection.readyState);
-        return res.status(500).json({ 
-          message: 'Database connection error', 
-          error: 'Database not connected',
-          readyState: mongoose.connection.readyState
+        return res.status(503).json({ 
+          success: false, 
+          message: 'Database temporarily unavailable' 
         });
       }
-      
-      console.log('Database connected, querying members...');
-      
-      // Only fetch members that have been approved
-      const members = await Member.find({ isApproved: true });
-      
-      console.log(`Found ${members.length} approved members`);
-      
+
+      const members = await Member.find({ isApproved: true })
+        .populate({
+          path: 'userId',
+          select: 'email category banner aboutUs'
+        })
+        .sort({ firstName: 1, lastName: 1 });
+
       res.status(200).json(members);
     } catch (error) {
       console.error('Error in getAllMembers:', error);
       res.status(500).json({ 
+        success: false, 
         message: 'Error fetching members', 
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: error.message 
       });
     }
   },
 
-  // Get single member
+  // Get single member by ID
   getMember: async (req, res) => {
     try {
-      const member = await Member.findOne({ _id: req.params.memberId })
+      const { memberId } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(memberId)) {
+        return res.status(400).json({ success: false, message: 'Invalid member ID' });
+      }
+
+      const member = await Member.findById(memberId)
         .populate({
           path: 'userId',
-          select: '-password', // Exclude the password field
+          select: '-password',
           populate: {
             path: 'membersArray',
-            match: { _id: { $ne: req.params.memberId } } // Exclude the current member
+            match: { _id: { $ne: memberId } }
           }
         });
 
       if (!member) {
-        return res.status(404).json({ message: 'Member not found' });
+        return res.status(404).json({ success: false, message: 'Member not found' });
       }
 
       res.status(200).json({ member });
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching member', error: error.message });
+      console.error('Error fetching member:', error);
+      res.status(500).json({ success: false, message: 'Error fetching member', error: error.message });
     }
   },
 
@@ -144,56 +158,63 @@ createMember: [
     upload.single('dp'),
     async (req, res) => {
       try {
-        const updates = {};
-        const { firstName, lastName, email, phoneNumber, address, familyHead , dob} = req.body;
+        const { memberId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(memberId)) {
+          return res.status(400).json({ success: false, message: 'Invalid member ID' });
+        }
 
-        // Collect updates
-        if (firstName) updates.firstName = firstName;
-        if (lastName) updates.lastName = lastName;
-        if (email) updates.email = email;
-        if (phoneNumber) updates.phoneNumber = phoneNumber;
-        if (address) updates.address = address;
-        if (familyHead !== undefined) updates.familyHead = familyHead === 'true';
+        const updates = {};
+        const { firstName, lastName, email, phoneNumber, address, familyHead, dob } = req.body;
+
+        if (firstName) updates.firstName = firstName.trim();
+        if (lastName) updates.lastName = lastName.trim();
+        if (email !== undefined) {
+          updates.email = email.trim() !== '' ? email.trim().toLowerCase() : undefined;
+        }
+        if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber.trim();
+        if (address !== undefined) updates.address = address.trim();
+        if (familyHead !== undefined) updates.familyHead = familyHead === 'true' || familyHead === true;
         if (dob) updates.dob = dob;
 
-        // Check if member exists
-        const existingMember = await Member.findOne({ _id: req.params.memberId, userId: req.userId });
+        // Verify member belongs to the authenticated user
+        const existingMember = await Member.findOne({ _id: memberId, userId: req.userId });
         if (!existingMember) {
-          return res.status(404).json({ message: 'Member not found' });
+          return res.status(404).json({ success: false, message: 'Member not found or unauthorized' });
         }
 
         // Handle image upload
         if (req.file) {
           try {
-            const dpUrl = await uploadToImageKit(req.file, req.params.memberId, "members");
+            const dpUrl = await uploadToImageKit(req.file, memberId, "members");
             updates.dp = dpUrl;
-          } catch (error) {
-            return res.status(500).json({ message: 'Error uploading image', error: error.message });
+          } catch (uploadError) {
+            console.error('ImageKit upload error during member update:', uploadError.message);
           }
         }
 
-        // Update familyHeadId if necessary
+        // Update familyHeadId in user document if needed
         if (updates.familyHead !== undefined) {
           const userUpdate = updates.familyHead ? { familyHeadId: existingMember._id } : { familyHeadId: null };
           await User.findByIdAndUpdate(req.userId, userUpdate);
         }
 
-        // Apply updates
+        // Apply updates to member
         await Member.findOneAndUpdate(
-          { _id: req.params.memberId, userId: req.userId },
+          { _id: memberId, userId: req.userId },
           updates,
-          { new: true }
+          { new: true, runValidators: true }
         );
 
         // Fetch the updated user data
-        const user = await User.findById(req.userId)
-          .select('-password') // Exclude password from the result
-          .populate({ path: 'membersArray', model: 'Member', strictPopulate: false });
+        const updatedUser = await User.findById(req.userId)
+          .select('-password')
+          .populate({ path: 'membersArray', model: 'Member' });
 
-        res.status(200).json(user);
+        res.status(200).json(updatedUser);
 
       } catch (error) {
-        res.status(500).json({ message: 'Error updating member', error: error.message });
+        console.error('Error updating member:', error);
+        res.status(500).json({ success: false, message: 'Error updating member', error: error.message });
       }
     }
   ],
@@ -201,55 +222,81 @@ createMember: [
   // Delete member
   deleteMember: async (req, res) => {
     try {
-      const member = await Member.findOneAndDelete({ _id: req.params.memberId, userId: req.userId });
+      const { memberId } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(memberId)) {
+        return res.status(400).json({ success: false, message: 'Invalid member ID' });
+      }
+
+      const member = await Member.findOneAndDelete({ _id: memberId, userId: req.userId });
       if (!member) {
-        return res.status(404).json({ message: 'Member not found' });
+        return res.status(404).json({ success: false, message: 'Member not found or unauthorized' });
       }
 
       // Update user's membersArray and familyHeadId
-      const updateData = { $pull: { membersArray: req.params.memberId } };
+      const updateData = { $pull: { membersArray: memberId } };
       if (member.familyHead) {
         updateData.familyHeadId = null;
       }
       await User.findByIdAndUpdate(req.userId, updateData);
 
-      // Delete dp from ImageKit
+      // Attempt to delete DP from ImageKit if exists
       try {
         await deleteFromImageKit(member._id.toString(), "members");
-      } catch (error) {
-        console.error('Error deleting image from ImageKit:', error);
+      } catch (imgError) {
+        console.warn('Note: DP image deletion failed or file did not exist on ImageKit:', imgError.message);
       }
 
       // Fetch the updated user data
-      const user = await User.findById(req.userId);
+      const updatedUser = await User.findById(req.userId)
+        .select('-password')
+        .populate({ path: 'membersArray', model: 'Member' });
 
-      res.status(200).json({ message: 'Member deleted successfully', member, user });
+      res.status(200).json({ 
+        success: true, 
+        message: 'Member deleted successfully', 
+        member, 
+        user: updatedUser 
+      });
 
     } catch (error) {
-      res.status(500).json({ message: 'Error deleting member', error: error.message });
+      console.error('Error deleting member:', error);
+      res.status(500).json({ success: false, message: 'Error deleting member', error: error.message });
     }
   },
 
-  // Search members
-searchMembers: async (req, res) => {
-  try {
-    const searchQuery = req.query.q;
-    const searchResults = await Member.find({
-      isApproved: true,
-      $or: [
-        { phoneNumber: { $regex: searchQuery, $options: 'i' } },
-        { email: { $regex: searchQuery, $options: 'i' } },
-        { firstName: { $regex: searchQuery, $options: 'i' } },
-        { lastName: { $regex: searchQuery, $options: 'i' } },
-        { address: { $regex: searchQuery, $options: 'i' } }
-      ]
-    });
-    res.status(200).json(searchResults);
-  } catch (error) {
-    res.status(500).json({ message: 'Error searching members', error: error.message });
-  }
-}
+  // Search members safely against ReDoS
+  searchMembers: async (req, res) => {
+    try {
+      const searchQuery = req.query.q;
+      if (!searchQuery || searchQuery.trim() === '') {
+        return res.status(200).json([]);
+      }
 
+      const safeQuery = escapeRegex(searchQuery.trim());
+      const regex = new RegExp(safeQuery, 'i');
+
+      const searchResults = await Member.find({
+        isApproved: true,
+        $or: [
+          { phoneNumber: regex },
+          { email: regex },
+          { firstName: regex },
+          { lastName: regex },
+          { address: regex }
+        ]
+      })
+      .populate({
+        path: 'userId',
+        select: 'email category banner aboutUs'
+      })
+      .limit(50);
+
+      res.status(200).json(searchResults);
+    } catch (error) {
+      console.error('Error searching members:', error);
+      res.status(500).json({ success: false, message: 'Error searching members', error: error.message });
+    }
+  }
 };
 
 module.exports = memberController;

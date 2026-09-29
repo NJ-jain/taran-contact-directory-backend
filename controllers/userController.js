@@ -3,86 +3,100 @@ const multer = require('multer');
 const { uploadToImageKit } = require('../utils/imageKit');
 const Admin = require('../models/adminModel.js');
 
-// Configure multer to store files in memory
-const upload = multer({ storage: multer.memoryStorage() });
+// Configure multer to store files in memory (max 5MB)
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
-// Helper function to handle image upload and update user
-async function handleImageUpload(req, user) {
-  if (req.file) {
-    const filePath = await uploadToImageKit(req.file, user._id, `user`);
-    user.banner = filePath;
-    await user.save();
-  }
+// Helper function to handle banner upload
+async function handleBannerUpload(file, userId) {
+  if (!file) return null;
+  return await uploadToImageKit(file, userId.toString(), 'user');
 }
 
-
-// Create a new user
-exports.createUser = [
-  upload.single('bannerImage'),
-  async (req, res) => {
-    try {
-      const user = new User(req.body);
-      await user.save();
-      await handleImageUpload(req, user);
-
-      // Exclude password from the response
-      const userWithoutPassword = await User.findById(user._id).select('-password');
-      res.status(201).json(userWithoutPassword);
-    } catch (error) {
-      res.status(400).json({ message: error.message });
-    }
-  }
-];
-
-// Get a user
+// Get authenticated user details
 exports.getUser = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
-      .select('-password') // Exclude password from the result
-      .populate({ path: 'membersArray', model: 'Member', strictPopulate: false });
-    res.json(user);
+      .select('-password -otp -otpExpires -resetPasswordToken -resetPasswordExpires')
+      .populate({ path: 'membersArray', model: 'Member' });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.status(200).json(user);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in getUser:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Update a user
+// Update user profile with strict field whitelisting (prevent mass assignment)
 exports.updateUser = [
   upload.single('bannerImage'),
   async (req, res) => {
     try {
-      const user = await User.findByIdAndUpdate(req.userId, req.body, { new: true })
-        .select('-password') // Exclude password from the result
-        .populate({ path: 'membersArray', model: 'Member', strictPopulate: false });
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+      const allowedFields = ['aboutUs', 'category'];
+      const updates = {};
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
       }
 
-      await handleImageUpload(req, user);
-      res.json(user);
+      // Handle banner upload if present
+      if (req.file) {
+        try {
+          const bannerUrl = await handleBannerUpload(req.file, req.userId);
+          if (bannerUrl) {
+            updates.banner = bannerUrl;
+          }
+        } catch (uploadError) {
+          console.error('Error uploading banner to ImageKit:', uploadError.message);
+        }
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        req.userId, 
+        updates, 
+        { new: true, runValidators: true }
+      )
+      .select('-password -otp -otpExpires -resetPasswordToken -resetPasswordExpires')
+      .populate({ path: 'membersArray', model: 'Member' });
+
+      if (!updatedUser) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      res.status(200).json(updatedUser);
     } catch (error) {
-      res.status(400).json({ message: error.message });
+      console.error('Error in updateUser:', error);
+      res.status(400).json({ success: false, message: error.message });
     }
   }
 ];
 
-
+// Request admin approval for directory inclusion
 exports.adminApproval = async (req, res) => {
   try {
     const userId = req.userId;
 
-    // Use findOneAndUpdate with $addToSet to ensure no duplicates
     const globalUserArray = await Admin.GlobalUserArray.findOneAndUpdate(
-      {}, // An empty filter selects the first document found
-      { $addToSet: { userArray: userId } }, // Adds userId to the array only if it doesn't already exist
-      { upsert: true, new: true, useFindAndModify: false } // Options to create if not exists, return new doc, and use native findOneAndUpdate
+      {},
+      { $addToSet: { userArray: userId } },
+      { upsert: true, new: true }
     );
 
-    res.status(200).json(globalUserArray);
+    res.status(200).json({ 
+      success: true, 
+      message: 'Approval request submitted successfully', 
+      data: globalUserArray 
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in adminApproval:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
-
-
-

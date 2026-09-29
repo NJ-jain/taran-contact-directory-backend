@@ -1,25 +1,31 @@
 const jwt = require('jsonwebtoken');
 
 const auth = async (req, res, next) => {
-  const authHeader = req.header('Authorization');
+  const authHeader = req.header('Authorization') || req.header('authorization');
   
   if (!authHeader) {
-    return res.status(401).json({ message: 'Authorization header missing, access denied' });
+    return res.status(401).json({ success: false, message: 'Authorization header missing, access denied' });
   }
 
-  const token = authHeader.replace('Bearer ', '');
+  const token = authHeader.startsWith('Bearer ') 
+    ? authHeader.slice(7).trim() 
+    : authHeader.trim();
   
   if (!token) {
-    return res.status(401).json({ message: 'No authentication token, access denied' });
+    return res.status(401).json({ success: false, message: 'No authentication token, access denied' });
   }
 
   try {
+    if (!process.env.JWT_SECRET) {
+      console.error('CRITICAL: JWT_SECRET environment variable is missing!');
+      return res.status(500).json({ success: false, message: 'Server configuration error' });
+    }
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = verified.userId;
     next();
   } catch (error) {
-    return res.status(401).json({ message: 'Token verification failed, authorization denied' });
+    return res.status(401).json({ success: false, message: 'Token verification failed or expired, authorization denied' });
   }
 };
 
-module.exports = auth;
+module.exports = auth;
