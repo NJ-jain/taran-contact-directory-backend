@@ -1,12 +1,9 @@
 const User = require('../models/userModel');
 const Member = require('../models/memberModel');
-const PhoneOtp = require('../models/phoneOtpModel');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendOTPEmail, sendWelcomeEmail } = require('../config/emailConfig');
-const { sendSmsOtp } = require('../utils/smsService');
-const { sendWhatsAppOTP } = require('../utils/whatsappService');
 
 const JWT_EXPIRATION = '24h';
 
@@ -139,17 +136,23 @@ const authController = {
       user.otpExpires = otpExpires;
       await user.save();
 
-      // Send OTP email
+      // Send real OTP email via Nodemailer
       await sendOTPEmail(normalizedEmail, otp, true);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        message: 'OTP sent successfully. Please check your email to verify and reset your password.'
+        message: 'OTP sent successfully. Please check your email inbox to verify and reset your password.'
       });
 
     } catch (error) {
       console.error('Forgot password error:', error);
-      res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
+      const isAuthError = error.code === 'EAUTH' || (error.message && error.message.includes('invalid_grant'));
+      return res.status(500).json({ 
+        success: false, 
+        message: isAuthError 
+          ? 'Gmail authentication failed (invalid_grant). Please set a valid GOOGLE_APP_PASSWORD in backend/.env' 
+          : (error.message || 'Error sending OTP')
+      });
     }
   },
 
@@ -175,16 +178,45 @@ const authController = {
       user.otpExpires = otpExpires;
       await user.save();
 
-      await sendOTPEmail(normalizedEmail, otp, false);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`\n======================================================`);
+        console.log(`[OTP GENERATED - DEV MODE]`);
+        console.log(`Email: ${normalizedEmail}`);
+        console.log(`OTP:   ${otp}`);
+        console.log(`======================================================\n`);
+      }
 
-      res.status(200).json({
+      let emailSent = false;
+      try {
+        await sendOTPEmail(normalizedEmail, otp, false);
+        emailSent = true;
+      } catch (err) {
+        console.error('OTP email dispatch failed:', err.message);
+      }
+
+      if (!emailSent && process.env.NODE_ENV !== 'production') {
+        return res.status(200).json({
+          success: true,
+          message: 'OTP generated. Check terminal logs for dev OTP.',
+          devOtp: otp
+        });
+      }
+
+      if (!emailSent) {
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Unable to deliver OTP email.' 
+        });
+      }
+
+      return res.status(200).json({
         success: true,
         message: 'OTP sent successfully. Please check your email.'
       });
 
     } catch (error) {
       console.error('Send OTP error:', error);
-      res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
+      return res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
     }
   },
 
@@ -238,8 +270,8 @@ const authController = {
     }
   },
 
-  // Send OTP to phone number (Verified directory members only)
-  sendPhoneOTP: async (req, res) => {
+  // Direct Phone Login for verified directory members (No OTP required)
+  phoneLogin: async (req, res) => {
     try {
       const { phoneNumber } = req.body;
       if (!phoneNumber) {
@@ -264,164 +296,16 @@ const authController = {
       const member = await Member.findOne({
         isApproved: true,
         phoneNumber: { $regex: last10 + '$' }
-      }).populate('userId', 'email category banner aboutUs');
-
-      if (!member) {
-        return res.status(404).json({
-          success: false,
-          message: 'Phone number not registered in the directory. Only verified community members can access the contact directory.'
-        });
-      }
-
-      // Rate limiting: 60-second cooldown per phone number
-      const existingOtp = await PhoneOtp.findOne({
-        phoneNumber: last10,
-        createdAt: { $gt: new Date(Date.now() - 60 * 1000) }
-      });
-
-      if (existingOtp) {
-        return res.status(429).json({
-          success: false,
-          message: 'Please wait 60 seconds before requesting another OTP.'
-        });
-      }
-
-      // Generate secure 6-digit OTP
-      const otp = crypto.randomInt(100000, 1000000).toString();
-
-      // Clear any prior OTPs for this number and save fresh OTP
-      await PhoneOtp.deleteMany({ phoneNumber: last10 });
-      const phoneOtpRecord = new PhoneOtp({
-        phoneNumber: last10,
-        otp,
-        memberId: member._id,
-        userId: member.userId ? (member.userId._id || member.userId) : undefined,
-        attempts: 0
-      });
-      await phoneOtpRecord.save();
-
-      // Security: Only log plain-text OTP in development mode. Never log OTP in production!
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`\n======================================================`);
-        console.log(`[COMMUNITY PHONE OTP GENERATED - DEV MODE]`);
-        console.log(`Member: ${member.firstName} ${member.lastName}`);
-        console.log(`Phone:  ${last10}`);
-        console.log(`OTP:    ${otp}`);
-        console.log(`======================================================\n`);
-      } else {
-        const masked = last10.slice(0, 2) + '******' + last10.slice(-2);
-        console.log(`[PHONE OTP] Verification code generated for member ${member.firstName} ${member.lastName} (${masked})`);
-      }
-
-      // PRIMARY CHANNEL: Send OTP via Official Meta WhatsApp Cloud API
-      let whatsappResult = { success: false, provider: 'none' };
-      try {
-        whatsappResult = await sendWhatsAppOTP(last10, otp);
-      } catch (waError) {
-        console.error('[PHONE OTP] WhatsApp dispatch error:', waError.message);
-      }
-
-      // If email exists, send backup email notification
-      const targetEmail = member.email || member.userId?.email;
-      if (targetEmail) {
-        try {
-          await sendOTPEmail(targetEmail, otp, false);
-        } catch (emailErr) {
-          console.warn('[PHONE OTP] Backup email notification failed:', emailErr.message);
-        }
-      }
-
-      // Production error handling: Do NOT report success if WhatsApp delivery failed
-      if (process.env.NODE_ENV === 'production' && !whatsappResult.success && process.env.SHOW_DEV_OTP_IN_PROD !== 'true') {
-        // Roll back the saved OTP so no ghost OTP document remains in the database
-        await PhoneOtp.deleteOne({ _id: phoneOtpRecord._id });
-        return res.status(502).json({
-          success: false,
-          message: 'Unable to deliver verification code to WhatsApp. Please ensure your registered number is active on WhatsApp, or contact administrator.'
-        });
-      }
-
-      const responsePayload = {
-        success: true,
-        message: `Verification code sent to your WhatsApp number ending in ...${last10.slice(-4)}`,
-        phoneNumber: last10,
-        memberName: `${member.firstName} ${member.lastName}`.trim(),
-        channel: whatsappResult.success ? 'whatsapp' : 'dev'
-      };
-
-      // Return devOtp in development or if explicitly allowed for testing in production
-      if (process.env.NODE_ENV !== 'production' || process.env.SHOW_DEV_OTP_IN_PROD === 'true') {
-        responsePayload.devOtp = otp;
-      }
-
-      return res.status(200).json(responsePayload);
-
-    } catch (error) {
-      console.error('Send Phone OTP error:', error);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Error sending OTP to phone number', 
-        error: error.message 
-      });
-    }
-  },
-
-  // Verify Phone OTP and log in community member
-  verifyPhoneOTP: async (req, res) => {
-    try {
-      const { phoneNumber, otp } = req.body;
-      if (!phoneNumber || !otp) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Phone number and OTP code are required' 
-        });
-      }
-
-      const digitsOnly = phoneNumber.toString().replace(/\D/g, '');
-      const last10 = digitsOnly.slice(-10);
-
-      const otpRecord = await PhoneOtp.findOne({ phoneNumber: last10 });
-      if (!otpRecord) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'OTP has expired or was not requested. Please request a new OTP.' 
-        });
-      }
-
-      // Check brute-force attempts
-      if (otpRecord.attempts >= 5) {
-        await PhoneOtp.deleteOne({ _id: otpRecord._id });
-        return res.status(429).json({ 
-          success: false, 
-          message: 'Too many incorrect attempts. Please request a new OTP.' 
-        });
-      }
-
-      // Verify OTP code
-      if (otpRecord.otp !== otp.toString().trim()) {
-        otpRecord.attempts += 1;
-        await otpRecord.save();
-        const attemptsLeft = 5 - otpRecord.attempts;
-        return res.status(400).json({ 
-          success: false, 
-          message: `Invalid OTP code. ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} remaining.` 
-        });
-      }
-
-      // OTP is valid - consume it
-      await PhoneOtp.deleteOne({ _id: otpRecord._id });
-
-      // Fetch the full member and associated user
-      const member = await Member.findById(otpRecord.memberId).populate({
+      }).populate({
         path: 'userId',
         select: '-password -otp -otpExpires -resetPasswordToken -resetPasswordExpires',
         populate: { path: 'membersArray', model: 'Member' }
       });
 
-      if (!member || !member.isApproved) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Member account is inactive or not approved.' 
+      if (!member) {
+        return res.status(404).json({
+          success: false,
+          message: 'Phone number not registered in the directory. Only verified community members can access the contact directory.'
         });
       }
 
@@ -446,7 +330,7 @@ const authController = {
       // Return session data compatible with frontend Redux store
       return res.status(200).json({
         success: true,
-        message: 'Phone number verified successfully',
+        message: 'Login successful',
         token,
         member: {
           _id: member._id,
@@ -469,13 +353,22 @@ const authController = {
       });
 
     } catch (error) {
-      console.error('Verify Phone OTP error:', error);
+      console.error('Phone login error:', error);
       return res.status(500).json({ 
         success: false, 
-        message: 'Error verifying OTP', 
+        message: 'Error logging in with phone number', 
         error: error.message 
       });
     }
+  },
+
+  // Backwards compatibility aliases
+  sendPhoneOTP: async (req, res) => {
+    return authController.phoneLogin(req, res);
+  },
+
+  verifyPhoneOTP: async (req, res) => {
+    return authController.phoneLogin(req, res);
   }
 };
 

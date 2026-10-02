@@ -3,13 +3,13 @@ const router = express.Router();
 const memberController = require('../controllers/memberController');
 const auth = require('../middleware/auth');
 
-router.get('/search', auth, memberController.searchMembers);
+router.get('/search', memberController.searchMembers);
 // Add auth middleware to each route explicitly
 router.post('/', auth, memberController.createMember);
 
-router.get('/', auth, memberController.getAllMembers);
+router.get('/', memberController.getAllMembers);
 
-router.get('/:memberId', auth, memberController.getMember);
+router.get('/:memberId', memberController.getMember);
 
 router.put('/:memberId', auth, memberController.updateMember);
 

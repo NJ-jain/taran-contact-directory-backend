@@ -17,8 +17,9 @@ router.post('/verify-otp', authController.verifyOTP);
 // Send OTP route (for other purposes)
 router.post('/send-otp', authController.sendOTP);
 
-// Phone OTP verification routes for community members
-router.post('/phone/send-otp', authController.sendPhoneOTP);
-router.post('/phone/verify-otp', authController.verifyPhoneOTP);
+// Phone direct login route for community members (No OTP required)
+router.post('/phone/login', authController.phoneLogin);
+router.post('/phone/send-otp', authController.phoneLogin); // Backwards compatibility alias
+router.post('/phone/verify-otp', authController.phoneLogin); // Backwards compatibility alias
 
 module.exports = router;

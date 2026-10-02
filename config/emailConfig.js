@@ -2,9 +2,19 @@ const nodemailer = require('nodemailer');
 
 // Create transporter with Gmail configuration
 const createTransporter = () => {
-  // Check if OAuth 2.0 credentials are available
+  // Option 1: App Password configuration (Recommended & most reliable for Gmail)
+  if (process.env.EMAIL_USER && process.env.GOOGLE_APP_PASSWORD) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.GOOGLE_APP_PASSWORD.replace(/\s+/g, ''),
+      },
+    });
+  }
+
+  // Option 2: OAuth 2.0 configuration
   if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN) {
-    // OAuth 2.0 configuration (recommended)
     return nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -16,18 +26,9 @@ const createTransporter = () => {
         accessToken: process.env.GMAIL_ACCESS_TOKEN,
       },
     });
-  } else if (process.env.EMAIL_USER && process.env.GOOGLE_APP_PASSWORD) {
-    // App Password configuration (requires 2-Step Verification)
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.GOOGLE_APP_PASSWORD,
-      },
-    });
-  } else {
-    throw new Error('Email configuration not found. Please set up Gmail credentials in environment variables.');
   }
+
+  throw new Error('Email configuration not found. Please set GOOGLE_APP_PASSWORD in .env.');
 };
 
 // Send email function

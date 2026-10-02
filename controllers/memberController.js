@@ -132,18 +132,25 @@ const memberController = {
         return res.status(400).json({ success: false, message: 'Invalid member ID' });
       }
 
-      const member = await Member.findById(memberId)
+      const member = await Member.findOne({ _id: memberId, isApproved: true })
         .populate({
           path: 'userId',
           select: '-password',
           populate: {
             path: 'membersArray',
-            match: { _id: { $ne: memberId } }
+            match: { _id: { $ne: memberId }, isApproved: true }
           }
         });
 
       if (!member) {
-        return res.status(404).json({ success: false, message: 'Member not found' });
+        return res.status(404).json({ success: false, message: 'Member not found or pending approval' });
+      }
+
+      // Ensure only populated, approved family members remain
+      if (member.userId && Array.isArray(member.userId.membersArray)) {
+        member.userId.membersArray = member.userId.membersArray.filter(
+          (m) => m && m._id && m._id.toString() !== memberId.toString() && m.isApproved === true
+        );
       }
 
       res.status(200).json({ member });
